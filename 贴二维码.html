@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片编辑 - 文字+二维码均可拖动</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+        
+        .controls {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .editor {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input, textarea, select, button {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        #canvas-container {
+            position: relative;
+            margin-top: 20px;
+            border: 1px dashed #ccc;
+            cursor: default;
+        }
+        
+        #preview {
+            max-width: 100%;
+            max-height: 600px;
+            display: block;
+        }
+        
+        #qr-upload {
+            margin-top: 10px;
+        }
+        
+        .position-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        
+        .position-controls input {
+            width: 48%;
+        }
+        
+        .download-btn {
+            background: #2196F3;
+            margin-top: 20px;
+            padding: 10px;
+        }
+        
+        .scale-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        
+        .scale-btn {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        
+        .scale-percent {
+            width: 60px;
+            text-align: center;
+        }
+        
+        .drag-hint {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h3>图片编辑工具</h3>
+            <hr>
+            
+            <!-- 上传主图片 -->
+            <div class="control-group">
+                <label for="image-upload">1. 上传主图片</label>
+                <input type="file" id="image-upload" accept="image/*">
+            </div>
+            
+            <!-- 文字编辑 -->
+            <div class="control-group">
+                <label for="text-input">2. 添加文字内容</label>
+                <textarea id="text-input" placeholder="请输入要添加的文字..."></textarea>
+                
+                <div class="position-controls">
+                    <input type="number" id="text-x" placeholder="X坐标" value="50">
+                    <input type="number" id="text-y" placeholder="Y坐标" value="50">
+                </div>
+                
+                <div class="position-controls" style="margin-top: 5px;">
+                    <input type="color" id="text-color" value="#000000">
+                    <input type="number" id="text-size" placeholder="字体大小" value="24">
+                </div>
+            </div>
+            
+            <!-- 二维码/图片上传 -->
+            <div class="control-group">
+                <label for="qr-upload">3. 上传二维码/其他图片</label>
+                <input type="file" id="qr-upload" accept="image/*">
+                
+                <div class="position-controls">
+                    <input type="number" id="qr-x" placeholder="X坐标" value="200">
+                    <input type="number" id="qr-y" placeholder="Y坐标" value="200">
+                </div>
+                
+                <div class="position-controls" style="margin-top: 5px;">
+                    <input type="number" id="qr-width" placeholder="宽度" value="100">
+                    <input type="number" id="qr-height" placeholder="高度" value="100">
+                </div>
+                
+                <!-- 缩放控制 -->
+                <div class="scale-controls">
+                    <button class="scale-btn" id="scale-down">-</button>
+                    <input type="number" class="scale-percent" id="scale-percent" value="100" min="10" max="500">%
+                    <button class="scale-btn" id="scale-up">+</button>
+                    <label style="margin: 0; font-weight: normal;">等比例缩放</label>
+                    <input type="checkbox" id="keep-ratio" checked style="width: auto;">
+                </div>
+            </div>
+            
+            <button id="apply-btn">应用编辑</button>
+            <button id="reset-btn" style="background: #f44336;">重置</button>
+        </div>
+        
+        <div class="editor">
+            <h3>预览区域（文字+二维码均可拖动）</h3>
+            <div id="canvas-container">
+                <div class="drag-hint" id="drag-hint">拖动文字/二维码调整位置</div>
+                <canvas id="preview"></canvas>
+            </div>
+            <button id="download-btn" class="download-btn" style="display: none;">下载编辑后的图片</button>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const imageUpload = document.getElementById('image-upload');
+        const qrUpload = document.getElementById('qr-upload');
+        const textInput = document.getElementById('text-input');
+        const textX = document.getElementById('text-x');
+        const textY = document.getElementById('text-y');
+        const textColor = document.getElementById('text-color');
+        const textSize = document.getElementById('text-size');
+        const qrX = document.getElementById('qr-x');
+        const qrY = document.getElementById('qr-y');
+        const qrWidth = document.getElementById('qr-width');
+        const qrHeight = document.getElementById('qr-height');
+        const applyBtn = document.getElementById('apply-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const canvas = document.getElementById('preview');
+        const ctx = canvas.getContext('2d');
+        const scaleDown = document.getElementById('scale-down');
+        const scaleUp = document.getElementById('scale-up');
+        const scalePercent = document.getElementById('scale-percent');
+        const keepRatio = document.getElementById('keep-ratio');
+        const dragHint = document.getElementById('drag-hint');
+
+        // 全局变量 - 新增文字拖拽相关状态
+        let mainImage = null;
+        let qrImage = null;
+        let qrOriginalWidth = 100;
+        let qrOriginalHeight = 100;
+        
+        // 拖拽状态：区分是拖动文字还是二维码
+        let isDragging = false;
+        let dragTarget = ''; // 'text' 或 'qr'
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // 初始化画布
+        function initCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            downloadBtn.style.display = 'none';
+            dragHint.style.display = 'none';
+            isDragging = false;
+            dragTarget = '';
+            canvas.style.cursor = 'default';
+        }
+
+        // 绘制所有内容
+        function drawAll() {
+            if (!mainImage) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. 绘制主图
+            ctx.drawImage(mainImage, 0, 0);
+            
+            // 2. 绘制文字
+            const text = textInput.value.trim();
+            if (text) {
+                const x = parseInt(textX.value);
+                const y = parseInt(textY.value);
+                ctx.font = `${textSize.value}px Arial`;
+                ctx.fillStyle = textColor.value;
+                ctx.fillText(text, x, y);
+            }
+            
+            // 3. 绘制二维码
+            if (qrImage) {
+                const x = parseInt(qrX.value);
+                const y = parseInt(qrY.value);
+                const w = parseInt(qrWidth.value);
+                const h = parseInt(qrHeight.value);
+                ctx.drawImage(qrImage, x, y, w, h);
+            }
+        }
+
+        // 精准计算Canvas内的鼠标坐标
+        function getCanvasRelativePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        // 计算文字的包围盒（用于判断是否点击到文字）
+        function getTextBoundingBox() {
+            const text = textInput.value.trim();
+            if (!text) return null;
+            ctx.font = `${textSize.value}px Arial`;
+            const x = parseInt(textX.value);
+            const y = parseInt(textY.value);
+            const metrics = ctx.measureText(text);
+            // 文字的包围盒：x, y - 字体大小 到 x+宽度, y
+            return {
+                x1: x,
+                y1: y - parseInt(textSize.value),
+                x2: x + metrics.width,
+                y2: y
+            };
+        }
+
+        // 计算二维码的包围盒
+        function getQrBoundingBox() {
+            if (!qrImage) return null;
+            const x = parseInt(qrX.value);
+            const y = parseInt(qrY.value);
+            const w = parseInt(qrWidth.value);
+            const h = parseInt(qrHeight.value);
+            return {
+                x1: x,
+                y1: y,
+                x2: x + w,
+                y2: y + h
+            };
+        }
+
+        // 处理主图片上传
+        imageUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    mainImage = img;
+                    drawAll();
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // 处理二维码上传
+        qrUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    qrImage = img;
+                    qrOriginalWidth = img.width;
+                    qrOriginalHeight = img.height;
+                    scalePercent.value = 100;
+                    updateQrSize();
+                    drawAll();
+                    dragHint.style.display = (textInput.value.trim() || qrImage) ? 'block' : 'none';
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // 文字内容变化时更新提示和绘制
+        textInput.addEventListener('input', function() {
+            drawAll();
+            dragHint.style.display = (textInput.value.trim() || qrImage) ? 'block' : 'none';
+        });
+
+        // 更新二维码尺寸
+        function updateQrSize() {
+            const scale = parseInt(scalePercent.value) / 100;
+            if (keepRatio.checked && qrImage) {
+                qrWidth.value = Math.round(qrOriginalWidth * scale);
+                qrHeight.value = Math.round(qrOriginalHeight * scale);
+            } else {
+                qrWidth.value = Math.round(qrOriginalWidth * scale);
+            }
+            drawAll();
+        }
+
+        // ========== 核心：文字+二维码拖拽逻辑 ==========
+        // 鼠标按下：判断选中的是文字还是二维码
+        canvas.addEventListener('mousedown', function(e) {
+            if (!mainImage) return;
+
+            const mousePos = getCanvasRelativePos(e);
+            const textBox = getTextBoundingBox();
+            const qrBox = getQrBoundingBox();
+
+            // 优先判断文字（文字在上方时，优先选中文字）
+            if (textBox) {
+                if (mousePos.x >= textBox.x1 && mousePos.x <= textBox.x2 &&
+                    mousePos.y >= textBox.y1 && mousePos.y <= textBox.y2) {
+                    isDragging = true;
+                    dragTarget = 'text';
+                    dragOffsetX = mousePos.x - parseInt(textX.value);
+                    dragOffsetY = mousePos.y - parseInt(textY.value);
+                    canvas.style.cursor = 'move';
+                    return;
+                }
+            }
+
+            // 再判断二维码
+            if (qrBox) {
+                if (mousePos.x >= qrBox.x1 && mousePos.x <= qrBox.x2 &&
+                    mousePos.y >= qrBox.y1 && mousePos.y <= qrBox.y2) {
+                    isDragging = true;
+                    dragTarget = 'qr';
+                    dragOffsetX = mousePos.x - parseInt(qrX.value);
+                    dragOffsetY = mousePos.y - parseInt(qrY.value);
+                    canvas.style.cursor = 'move';
+                    return;
+                }
+            }
+
+            // 点击空白处，关闭拖拽
+            isDragging = false;
+            dragTarget = '';
+            canvas.style.cursor = 'default';
+        });
+
+        // 鼠标移动：根据选中的目标更新位置
+        canvas.addEventListener('mousemove', function(e) {
+            if (!isDragging || !dragTarget || !mainImage) return;
+
+            const mousePos = getCanvasRelativePos(e);
+            let newX = mousePos.x - dragOffsetX;
+            let newY = mousePos.y - dragOffsetY;
+
+            // 限制在Canvas内
+            newX = Math.max(0, Math.min(newX, canvas.width));
+            newY = Math.max(0, Math.min(newY, canvas.height));
+
+            // 更新对应目标的坐标
+            if (dragTarget === 'text') {
+                textX.value = Math.round(newX);
+                textY.value = Math.round(newY);
+            } else if (dragTarget === 'qr') {
+                // 二维码还要限制右边界和下边界
+                newX = Math.max(0, Math.min(newX, canvas.width - parseInt(qrWidth.value)));
+                newY = Math.max(0, Math.min(newY, canvas.height - parseInt(qrHeight.value)));
+                qrX.value = Math.round(newX);
+                qrY.value = Math.round(newY);
+            }
+
+            drawAll();
+        });
+
+        // 全局鼠标松开：重置拖拽状态
+        document.addEventListener('mouseup', function() {
+            if (isDragging) {
+                isDragging = false;
+                dragTarget = '';
+                canvas.style.cursor = 'default';
+            }
+        });
+
+        // 鼠标移出Canvas：重置拖拽状态
+        canvas.addEventListener('mouseleave', function() {
+            isDragging = false;
+            dragTarget = '';
+            canvas.style.cursor = 'default';
+        });
+
+        // ========== 其他事件绑定 ==========
+        scaleUp.addEventListener('click', () => {
+            scalePercent.value = Math.min(500, parseInt(scalePercent.value) + 10);
+            updateQrSize();
+        });
+
+        scaleDown.addEventListener('click', () => {
+            scalePercent.value = Math.max(10, parseInt(scalePercent.value) - 10);
+            updateQrSize();
+        });
+
+        scalePercent.addEventListener('change', updateQrSize);
+        keepRatio.addEventListener('change', updateQrSize);
+        textSize.addEventListener('change', drawAll);
+        textColor.addEventListener('change', drawAll);
+
+        applyBtn.addEventListener('click', drawAll);
+
+        resetBtn.addEventListener('click', function() {
+            // 重置所有输入框
+            imageUpload.value = '';
+            qrUpload.value = '';
+            textInput.value = '';
+            textX.value = 50;
+            textY.value = 50;
+            textColor.value = '#000000';
+            textSize.value = 24;
+            qrX.value = 200;
+            qrY.value = 200;
+            qrWidth.value = 100;
+            qrHeight.value = 100;
+            scalePercent.value = 100;
+            keepRatio.checked = true;
+            // 重置变量
+            mainImage = null;
+            qrImage = null;
+            qrOriginalWidth = 100;
+            qrOriginalHeight = 100;
+            initCanvas();
+        });
+
+        downloadBtn.addEventListener('click', function() {
+            const dataURL = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'edited-image.png';
+            link.href = dataURL;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        });
+
+        // 初始化
+        initCanvas();
+    </script>
+</body>
+</html>

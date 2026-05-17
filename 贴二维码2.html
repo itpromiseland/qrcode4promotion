@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片底部加空白区域 - 文字左中 二维码右中</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 20px;
+        }
+        
+        .controls {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .editor {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input, textarea, select, button {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        #canvas-container {
+            position: relative;
+            margin-top: 20px;
+            border: 1px dashed #ccc;
+        }
+        
+        #preview {
+            max-width: 100%;
+            max-height: 700px;
+            display: block;
+        }
+        
+        .download-btn {
+            background: #2196F3;
+            margin-top: 20px;
+            padding: 10px;
+        }
+        
+        .sub-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        
+        .sub-controls input {
+            width: 48%;
+        }
+        
+        .gap-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .gap-controls input {
+            width: 60%;
+        }
+        
+        .drag-hint {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 控制面板 -->
+        <div class="controls">
+            <h3>图片底部加空白区域工具</h3>
+            <hr>
+            
+            <!-- 1. 上传主图片 -->
+            <div class="control-group">
+                <label for="image-upload">1. 上传主图片</label>
+                <input type="file" id="image-upload" accept="image/*">
+            </div>
+            
+            <!-- 2. 设置底部空白区域 -->
+            <div class="control-group">
+                <label for="gap-height">2. 底部空白区域高度（像素）</label>
+                <div class="gap-controls">
+                    <input type="number" id="gap-height" value="200" min="50" max="1000">
+                    <input type="color" id="gap-color" value="#ffffff" title="空白区域背景色">
+                </div>
+            </div>
+            
+            <!-- 3. 添加文字 -->
+            <div class="control-group">
+                <label for="text-input">3. 空白区域添加文字（支持回车换行）</label>
+                <textarea id="text-input" placeholder="请输入要添加的文字...&#10;回车即可换行"></textarea>
+                
+                <div class="sub-controls">
+                    <input type="number" id="text-padding" placeholder="文字左边距" value="20">
+                    <input type="number" id="text-line-height" placeholder="行间距" value="30">
+                </div>
+                
+                <div class="sub-controls" style="margin-top: 5px;">
+                    <input type="color" id="text-color" value="#000000">
+                    <input type="number" id="text-size" placeholder="字体大小" value="24">
+                </div>
+            </div>
+            
+            <!-- 4. 添加二维码 -->
+            <div class="control-group">
+                <label for="qr-upload">4. 上传二维码/图片</label>
+                <input type="file" id="qr-upload" accept="image/*">
+                
+                <div class="sub-controls">
+                    <input type="number" id="qr-padding" placeholder="二维码右边距" value="20">
+                    <input type="number" id="qr-size" placeholder="二维码尺寸" value="120">
+                </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <button id="generate-btn">生成新图片</button>
+            <button id="reset-btn" style="background: #f44336;">重置</button>
+        </div>
+        
+        <!-- 预览区域 -->
+        <div class="editor">
+            <h3>预览区域（文字/二维码可拖动）</h3>
+            <div id="canvas-container">
+                <div class="drag-hint" id="drag-hint">拖动文字/二维码调整位置</div>
+                <canvas id="preview"></canvas>
+            </div>
+            <button id="download-btn" class="download-btn" style="display: none;">下载生成的图片</button>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const imageUpload = document.getElementById('image-upload');
+        const gapHeight = document.getElementById('gap-height');
+        const gapColor = document.getElementById('gap-color');
+        const textInput = document.getElementById('text-input');
+        const textPadding = document.getElementById('text-padding');
+        const textLineHeight = document.getElementById('text-line-height');
+        const textColor = document.getElementById('text-color');
+        const textSize = document.getElementById('text-size');
+        const qrUpload = document.getElementById('qr-upload');
+        const qrPadding = document.getElementById('qr-padding');
+        const qrSize = document.getElementById('qr-size');
+        const generateBtn = document.getElementById('generate-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const canvas = document.getElementById('preview');
+        const ctx = canvas.getContext('2d');
+        const dragHint = document.getElementById('drag-hint');
+
+        // 全局变量
+        let mainImage = null;
+        let qrImage = null;
+        let originalImageWidth = 0;
+        let originalImageHeight = 0;
+        
+        // 拖拽状态
+        let isDragging = false;
+        let dragTarget = ''; // 'text' 或 'qr'
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // 初始化画布
+        function initCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            downloadBtn.style.display = 'none';
+            dragHint.style.display = 'none';
+            isDragging = false;
+            dragTarget = '';
+            canvas.style.cursor = 'default';
+        }
+
+        // 精准计算Canvas内的鼠标坐标
+        function getCanvasRelativePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        // 计算文字包围盒（多行 + 左中）
+        function getTextBoundingBox() {
+            const text = textInput.value.trim();
+            if (!text || !mainImage) return null;
+            
+            const lines = text.split('\n');
+            const fontSize = parseInt(textSize.value);
+            const lineHeight = parseInt(textLineHeight.value);
+            const leftPadding = parseInt(textPadding.value);
+            // 文字垂直居中核心计算：空白区域中线 - 文字总高度的一半
+            const gapH = parseInt(gapHeight.value);
+            const textTotalHeight = lines.length * lineHeight;
+            const startY = originalImageHeight + (gapH / 2) + (fontSize / 2) - (textTotalHeight / 2);
+
+            // 获取最长行的宽度
+            ctx.font = `${fontSize}px Arial`;
+            let maxWidth = 0;
+            lines.forEach(line => {
+                const width = ctx.measureText(line).width;
+                if (width > maxWidth) maxWidth = width;
+            });
+
+            return {
+                x1: leftPadding,
+                y1: startY - fontSize,
+                x2: leftPadding + maxWidth,
+                y2: startY + (lines.length - 1) * lineHeight
+            };
+        }
+
+        // 计算二维码包围盒（右中）
+        function getQrBoundingBox() {
+            if (!qrImage || !mainImage) return null;
+            
+            const size = parseInt(qrSize.value);
+            const rightPadding = parseInt(qrPadding.value);
+            const gapH = parseInt(gapHeight.value);
+            // 二维码垂直居中核心计算：空白区域中线 - 二维码高度的一半
+            const x = canvas.width - size - rightPadding;
+            const y = originalImageHeight + (gapH / 2) - (size / 2);
+
+            return {
+                x1: x,
+                y1: y,
+                x2: x + size,
+                y2: y + size
+            };
+        }
+
+        // 生成带空白区域的新图片
+        function generateNewImage() {
+            if (!mainImage) {
+                alert('请先上传主图片！');
+                return;
+            }
+
+            // 获取空白区域参数
+            const gapH = parseInt(gapHeight.value);
+            const gapC = gapColor.value;
+            
+            // 设置新画布尺寸
+            canvas.width = originalImageWidth;
+            canvas.height = originalImageHeight + gapH;
+            
+            // 1. 绘制原图
+            ctx.drawImage(mainImage, 0, 0);
+            
+            // 2. 绘制底部空白区域
+            ctx.fillStyle = gapC;
+            ctx.fillRect(0, originalImageHeight, canvas.width, gapH);
+            
+            // 3. 绘制多行文字（靠左 + 垂直居中）
+            const text = textInput.value.trim();
+            if (text) {
+                const lines = text.split('\n');
+                const fontSize = parseInt(textSize.value);
+                const lineHeight = parseInt(textLineHeight.value);
+                const leftPadding = parseInt(textPadding.value);
+                // 文字垂直居中核心公式
+                const textTotalHeight = lines.length * lineHeight;
+                const startY = originalImageHeight + (gapH / 2) + (fontSize / 2) - (textTotalHeight / 2);
+
+                ctx.font = `${fontSize}px Arial`;
+                ctx.fillStyle = textColor.value;
+
+                lines.forEach((line, index) => {
+                    const y = startY + index * lineHeight;
+                    ctx.fillText(line, leftPadding, y);
+                });
+            }
+            
+            // 4. 绘制二维码（靠右 + 垂直居中）
+            if (qrImage) {
+                const size = parseInt(qrSize.value);
+                const rightPadding = parseInt(qrPadding.value);
+                // 二维码垂直居中核心公式
+                const x = canvas.width - size - rightPadding;
+                const y = originalImageHeight + (gapH / 2) - (size / 2);
+
+                ctx.drawImage(qrImage, x, y, size, size);
+            }
+            
+            // 显示提示和下载按钮
+            dragHint.style.display = 'block';
+            downloadBtn.style.display = 'block';
+        }
+
+        // ========== 事件绑定 ==========
+        // 上传主图片
+        imageUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    mainImage = img;
+                    originalImageWidth = img.width;
+                    originalImageHeight = img.height;
+                    // 先绘制原图预览
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // 上传二维码
+        qrUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    qrImage = img;
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // 生成新图片按钮
+        generateBtn.addEventListener('click', generateNewImage);
+
+        // 拖拽逻辑 - 文字和二维码
+        canvas.addEventListener('mousedown', function(e) {
+            if (!mainImage) return;
+
+            const mousePos = getCanvasRelativePos(e);
+            const textBox = getTextBoundingBox();
+            const qrBox = getQrBoundingBox();
+
+            // 优先判断文字
+            if (textBox) {
+                if (mousePos.x >= textBox.x1 && mousePos.x <= textBox.x2 &&
+                    mousePos.y >= textBox.y1 && mousePos.y <= textBox.y2) {
+                    isDragging = true;
+                    dragTarget = 'text';
+                    dragOffsetX = mousePos.x - textBox.x1;
+                    dragOffsetY = mousePos.y - textBox.y1;
+                    canvas.style.cursor = 'move';
+                    return;
+                }
+            }
+
+            // 再判断二维码
+            if (qrBox) {
+                if (mousePos.x >= qrBox.x1 && mousePos.x <= qrBox.x2 &&
+                    mousePos.y >= qrBox.y1 && mousePos.y <= qrBox.y2) {
+                    isDragging = true;
+                    dragTarget = 'qr';
+                    dragOffsetX = mousePos.x - qrBox.x1;
+                    dragOffsetY = mousePos.y - qrBox.y1;
+                    canvas.style.cursor = 'move';
+                    return;
+                }
+            }
+
+            // 点击空白处
+            isDragging = false;
+            dragTarget = '';
+            canvas.style.cursor = 'default';
+        });
+
+        canvas.addEventListener('mousemove', function(e) {
+            if (!isDragging || !dragTarget || !mainImage) return;
+
+            const mousePos = getCanvasRelativePos(e);
+            const gapH = parseInt(gapHeight.value);
+            const minY = originalImageHeight;
+            const maxY = originalImageHeight + gapH;
+
+            let newX = mousePos.x - dragOffsetX;
+            let newY = mousePos.y - dragOffsetY;
+
+            // 限制在空白区域内
+            newX = Math.max(0, Math.min(newX, canvas.width));
+            newY = Math.max(minY, Math.min(newY, maxY));
+
+            // 更新坐标
+            if (dragTarget === 'text') {
+                textPadding.value = Math.round(newX);
+            } else if (dragTarget === 'qr') {
+                const size = parseInt(qrSize.value);
+                qrPadding.value = Math.round(canvas.width - (newX + size));
+            }
+
+            // 重新生成图片
+            generateNewImage();
+        });
+
+        // 全局鼠标松开
+        document.addEventListener('mouseup', function() {
+            if (isDragging) {
+                isDragging = false;
+                dragTarget = '';
+                canvas.style.cursor = 'default';
+            }
+        });
+
+        // 鼠标移出Canvas
+        canvas.addEventListener('mouseleave', function() {
+            isDragging = false;
+            dragTarget = '';
+            canvas.style.cursor = 'default';
+        });
+
+        // 重置按钮
+        resetBtn.addEventListener('click', function() {
+            // 重置输入框
+            imageUpload.value = '';
+            gapHeight.value = 200;
+            gapColor.value = '#ffffff';
+            textInput.value = '';
+            textPadding.value = 20;
+            textLineHeight.value = 30;
+            textColor.value = '#000000';
+            textSize.value = 24;
+            qrUpload.value = '';
+            qrPadding.value = 20;
+            qrSize.value = 120;
+            
+            // 重置变量
+            mainImage = null;
+            qrImage = null;
+            originalImageWidth = 0;
+            originalImageHeight = 0;
+            initCanvas();
+        });
+
+        // 下载图片
+        downloadBtn.addEventListener('click', function() {
+            const dataURL = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'new-image-with-gap.png';
+            link.href = dataURL;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        });
+
+        // 文字样式变化时重新生成
+        textSize.addEventListener('change', generateNewImage);
+        textColor.addEventListener('change', generateNewImage);
+        textPadding.addEventListener('change', generateNewImage);
+        textLineHeight.addEventListener('change', generateNewImage);
+        gapHeight.addEventListener('change', generateNewImage);
+        gapColor.addEventListener('change', generateNewImage);
+        qrSize.addEventListener('change', generateNewImage);
+        qrPadding.addEventListener('change', generateNewImage);
+        textInput.addEventListener('input', generateNewImage);
+
+        // 初始化
+        initCanvas();
+    </script>
+</body>
+</html>
